@@ -181,6 +181,36 @@
 
   .hidden{display:none!important;}
 
+  .qcard-head{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    margin-bottom:2px;
+  }
+  .qcollapse-btn{
+    display:flex;align-items:center;justify-content:center;gap:6px;
+    flex:none;padding:10px 16px;border:none;border-radius:10px;
+    background:linear-gradient(90deg,#f59e0b,#f97316);
+    color:#fff;font-size:12.5px;font-weight:800;letter-spacing:.2px;
+    cursor:pointer;box-shadow:0 3px 10px rgba(249,115,22,0.3);
+    transition:background .2s, transform .1s;
+    -webkit-tap-highlight-color:transparent;
+    min-height:38px;
+  }
+  .qcollapse-btn:active{transform:scale(0.96);}
+  .qcollapse-btn.active{
+    background:linear-gradient(90deg,#16a34a,#22c55e);
+    box-shadow:0 3px 10px rgba(34,197,94,0.3);
+  }
+  .qbody{
+    overflow:hidden;
+  }
+  .qbody.collapsed{
+    display:none;
+  }
+  .qcollapsed-hint{
+    display:none;font-size:12px;color:var(--muted);font-style:italic;margin:2px 0 0;
+  }
+  .qcard.is-collapsed .qcollapsed-hint{display:block;}
+
   @media print{
     html,body{display:none!important;}
   }
@@ -406,8 +436,13 @@ DATA.forEach(q=>{
   card.id = 'card-'+q.num;
 
   let html = '';
-  html += `<div class="qnum-badge">Soal ${q.num}</div>`;
+  html += `<div class="qcard-head">
+      <div class="qnum-badge">Soal ${q.num}</div>
+      <button type="button" class="qcollapse-btn" id="qcbtn-${q.num}" onclick="toggleQuestion(${q.num})">🙈 Sembunyikan</button>
+    </div>`;
   if(q.reading){ html += `<div class="reading">${q.reading}</div>`; }
+  html += `<p class="qcollapsed-hint" id="qchint-${q.num}">Soal ini disembunyikan. Tekan "Tampilkan" untuk membuka kembali.</p>`;
+  html += `<div class="qbody" id="qbody-${q.num}">`;
   html += `<p class="qtext">${q.text}</p>`;
 
   if(q.type==='single'){
@@ -428,6 +463,7 @@ DATA.forEach(q=>{
     </div>`;
   }
   html += `<div class="feedback" id="fb-${q.num}"></div>`;
+  html += `</div>`;
 
   card.innerHTML = html;
   container.appendChild(card);
@@ -478,78 +514,137 @@ function selectTF(num, val){
   updateProgress();
 }
 
+function toggleQuestion(num){
+  const body = document.getElementById('qbody-'+num);
+  const btn = document.getElementById('qcbtn-'+num);
+  const card = document.getElementById('card-'+num);
+  const collapsed = body.classList.toggle('collapsed');
+  card.classList.toggle('is-collapsed', collapsed);
+  btn.textContent = collapsed ? '👁️ Tampilkan' : '🙈 Sembunyikan';
+  btn.classList.toggle('active', collapsed);
+}
+
 function arraysEqual(a,b){
   if(a.length!==b.length) return false;
   const sa=[...a].sort(), sb=[...b].sort();
   return sa.every((v,i)=>v===sb[i]);
 }
 
+let alreadyGraded = false;
+let cachedSummary = '';
+
 document.getElementById('submitBtn').addEventListener('click', ()=>{
-  submitted = true;
-  let correctCount = 0;
-  const byPart = {1:{c:0,t:0},2:{c:0,t:0},3:{c:0,t:0},4:{c:0,t:0},5:{c:0,t:0}};
+  const btn = document.getElementById('submitBtn');
 
-  DATA.forEach(q=>{
-    byPart[q.part].t++;
-    const card = document.getElementById('card-'+q.num);
-    const ua = userAnswers[q.num];
-    let isCorrect = false;
+  if(!alreadyGraded){
+    submitted = true;
+    let correctCount = 0;
+    const byPart = {1:{c:0,t:0},2:{c:0,t:0},3:{c:0,t:0},4:{c:0,t:0},5:{c:0,t:0}};
 
-    if(q.type==='single'){
-      isCorrect = ua === q.answer;
-      card.querySelectorAll('.opt').forEach(o=>{ o.onclick = null; });
-    } else if(q.type==='multi'){
-      const arr = ua || [];
-      isCorrect = arraysEqual(arr, q.answer);
-      card.querySelectorAll('.opt').forEach(o=>{ o.onclick = null; });
-    } else if(q.type==='tf'){
-      isCorrect = ua === q.answer;
-      card.querySelectorAll('.tf-btn').forEach(b=>{ b.onclick = null; });
+    DATA.forEach(q=>{
+      byPart[q.part].t++;
+      const card = document.getElementById('card-'+q.num);
+      const ua = userAnswers[q.num];
+      let isCorrect = false;
+
+      if(q.type==='single'){
+        isCorrect = ua === q.answer;
+        card.querySelectorAll('.opt').forEach(o=>{ o.onclick = null; });
+      } else if(q.type==='multi'){
+        const arr = ua || [];
+        isCorrect = arraysEqual(arr, q.answer);
+        card.querySelectorAll('.opt').forEach(o=>{ o.onclick = null; });
+      } else if(q.type==='tf'){
+        isCorrect = ua === q.answer;
+        card.querySelectorAll('.tf-btn').forEach(b=>{ b.onclick = null; });
+      }
+
+      if(isCorrect){ correctCount++; byPart[q.part].c++; }
+    });
+
+    const name = document.getElementById('studentName').value.trim() || '(tanpa nama)';
+    const cls = document.getElementById('studentClass').value.trim() || '(tanpa kelas)';
+    const score = Math.round((correctCount/30)*100);
+
+    const resultArea = document.getElementById('resultArea');
+    resultArea.classList.remove('hidden');
+    resultArea.innerHTML = `
+      <div class="result-card">
+        <div style="font-size:15px;font-weight:700;color:#0f172a;">${name} — ${cls}</div>
+        <div style="font-size:44px;margin:14px 0;" id="resultIcon">⏳</div>
+        <div class="result-sub" style="font-size:14px;">Jawaban kamu telah berhasil disubmit.</div>
+        <div id="sendStatus" style="margin-top:12px;font-size:12.5px;color:#64748b;">⏳ Mengirim hasil ke guru...</div>
+      </div>`;
+    resultArea.scrollIntoView({behavior:'smooth', block:'start'});
+
+    // ---------- Susun ringkasan lengkap semua jawaban + skor ----------
+    let summaryLines = [];
+    summaryLines.push(`Nama: ${name} | Kelas: ${cls} | Skor: ${score} (${correctCount}/30)`);
+    DATA.forEach(q=>{
+      const ua = userAnswers[q.num];
+      let uaText;
+      if(q.type==='multi'){
+        uaText = (ua && ua.length) ? ua.sort().join(',') : '-';
+      } else {
+        uaText = ua || '-';
+      }
+      const correctText = q.type==='multi' ? q.answer.join(',') : q.answer;
+      const mark = (q.type==='multi') ? (arraysEqual(ua||[], q.answer) ? 'Benar' : 'Salah')
+                 : (ua===q.answer ? 'Benar' : 'Salah');
+      summaryLines.push(`No.${q.num}: ${uaText} (Kunci: ${correctText}) - ${mark}`);
+    });
+    cachedSummary = summaryLines.join(' || ');
+    alreadyGraded = true;
+  } else {
+    // Percobaan kirim ulang: reset status jadi "mengirim"
+    const st = document.getElementById('sendStatus');
+    if(st){
+      st.textContent = '⏳ Mengirim ulang hasil ke guru...';
+      st.style.color = '#64748b';
     }
+  }
 
-    if(isCorrect){ correctCount++; byPart[q.part].c++; }
-  });
+  btn.disabled = true;
+  btn.textContent = '⏳ Mengirim...';
 
-  document.getElementById('submitBtn').disabled = true;
-  document.getElementById('submitBtn').textContent = '✅ Sudah Disubmit';
-
-  const name = document.getElementById('studentName').value.trim() || '(tanpa nama)';
-  const cls = document.getElementById('studentClass').value.trim() || '(tanpa kelas)';
-  const score = Math.round((correctCount/30)*100);
-
-  const resultArea = document.getElementById('resultArea');
-  resultArea.classList.remove('hidden');
-  resultArea.innerHTML = `
-    <div class="result-card">
-      <div style="font-size:15px;font-weight:700;color:#0f172a;">${name} — ${cls}</div>
-      <div style="font-size:44px;margin:14px 0;">✅</div>
-      <div class="result-sub" style="font-size:14px;">Jawaban kamu telah berhasil disubmit.</div>
-      <div id="sendStatus" style="margin-top:12px;font-size:12.5px;color:#64748b;">⏳ Mengirim hasil ke guru...</div>
-    </div>`;
-  resultArea.scrollIntoView({behavior:'smooth', block:'start'});
-
-  // ---------- Susun ringkasan lengkap semua jawaban + skor ----------
-  let summaryLines = [];
-  summaryLines.push(`Nama: ${name} | Kelas: ${cls} | Skor: ${score} (${correctCount}/30)`);
-  DATA.forEach(q=>{
-    const ua = userAnswers[q.num];
-    let uaText;
-    if(q.type==='multi'){
-      uaText = (ua && ua.length) ? ua.sort().join(',') : '-';
-    } else {
-      uaText = ua || '-';
-    }
-    const correctText = q.type==='multi' ? q.answer.join(',') : q.answer;
-    const mark = (q.type==='multi') ? (arraysEqual(ua||[], q.answer) ? 'Benar' : 'Salah')
-               : (ua===q.answer ? 'Benar' : 'Salah');
-    summaryLines.push(`No.${q.num}: ${uaText} (Kunci: ${correctText}) - ${mark}`);
-  });
-  const fullSummary = summaryLines.join(' || ');
-
-  sendToGoogleForm(fullSummary);
+  sendToGoogleForm(cachedSummary, btn);
 });
 
-function sendToGoogleForm(summaryText){
+function sendToGoogleForm(summaryText, btn){
+  const st = document.getElementById('sendStatus');
+
+  function markFailed(msg){
+    if(st){
+      st.textContent = msg;
+      st.style.color = '#dc2626';
+    }
+    const iconEl = document.getElementById('resultIcon');
+    if(iconEl){ iconEl.textContent = '❌'; }
+    if(btn){
+      btn.disabled = false;
+      btn.textContent = '🔄 Submit Ulang';
+    }
+  }
+
+  function markSuccess(){
+    if(st){
+      st.textContent = '✅ Hasil berhasil dikirim ke guru.';
+      st.style.color = '#16a34a';
+    }
+    const iconEl = document.getElementById('resultIcon');
+    if(iconEl){ iconEl.textContent = '✅'; }
+    if(btn){
+      btn.disabled = true;
+      btn.textContent = '✅ Sudah Disubmit';
+    }
+  }
+
+  // Cek koneksi internet terlebih dahulu
+  if(!navigator.onLine){
+    markFailed('❌ Gagal mengirim: tidak ada koneksi internet.');
+    return;
+  }
+
   const FORM_ACTION = 'https://docs.google.com/forms/d/e/1FAIpQLSfkMKtrHuM_qcc_mhOfWYsyp5PXr21V0kOZqWwVJF8bMuO5eg/formResponse';
   const ENTRY_ID = 'entry.553083686';
 
@@ -570,13 +665,42 @@ function sendToGoogleForm(summaryText){
   form.appendChild(input);
 
   document.body.appendChild(form);
-  form.submit();
+
+  let finished = false;
+
+  // Jika koneksi terputus sebelum proses selesai, tandai sebagai gagal
+  function onOffline(){
+    if(finished) return;
+    finished = true;
+    markFailed('❌ Gagal mengirim: koneksi internet terputus.');
+    cleanup();
+  }
+  window.addEventListener('offline', onOffline);
+
+  function cleanup(){
+    window.removeEventListener('offline', onOffline);
+    if(form.parentNode) document.body.removeChild(form);
+    if(iframe.parentNode) document.body.removeChild(iframe);
+  }
+
+  try{
+    form.submit();
+  } catch(err){
+    finished = true;
+    markFailed('❌ Gagal mengirim: terjadi kesalahan jaringan.');
+    cleanup();
+    return;
+  }
 
   setTimeout(()=>{
-    const st = document.getElementById('sendStatus');
-    if(st){ st.textContent = '✅ Hasil berhasil dikirim ke guru.'; }
-    document.body.removeChild(form);
-    document.body.removeChild(iframe);
+    if(finished) return;
+    finished = true;
+    if(!navigator.onLine){
+      markFailed('❌ Gagal mengirim: tidak ada koneksi internet.');
+    } else {
+      markSuccess();
+    }
+    cleanup();
   }, 1200);
 }
 
